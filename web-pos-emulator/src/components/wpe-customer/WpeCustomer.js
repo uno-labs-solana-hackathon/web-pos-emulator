@@ -24,9 +24,13 @@ export class WpeCustomer extends LitElement {
    * @property {Boolean} loading              - true if some data is loading over API
    * @property {Object} articles              - articles description of the current purchase
    * @property {Object} customer              - the Customer object. Got over combo-box select.
+   * @property {Object} txInfo                - the Transaction object {total, earned, spend, spend_sign}
+   * @property {string} txSigned              - the signed transaction string signed by buyer
+   *
    * @property {number} payByBonuses          - bonuses amount that customer wish to spend (not used)
    * @property {string} tx                    - signed transaction (by customer) to spend ${payByBonuses} (not used)
    * @property {number} earnedBonuses         - bonuses amount that customer will earn after this purchase
+   *
    * @property {string} notificationHTML      - what display on notification prompt
    */
   static get properties() {
@@ -34,6 +38,8 @@ export class WpeCustomer extends LitElement {
       loading: { type: Boolean },
       articles: { type: Object },
       customer: { type: Object },
+      txInfo: { type: Object },
+      txSigned: { type: String },
       payByBonuses: { type: Number },
       tx: { type: String },
       earnedBonuses: { type: Number },
@@ -127,10 +133,12 @@ export class WpeCustomer extends LitElement {
         <vaadin-notification
           duration="4000"
           id="notification"
-          .renderer=${(root) => {root.innerHTML = this.notificationHTML}}
+          .renderer=${root => {
+            root.innerHTML = this.notificationHTML;
+          }}
         >
         </vaadin-notification>
-        <vaadin-form-layout .responsiveSteps="${[{"columns": 4}]}">
+        <vaadin-form-layout .responsiveSteps="${[{ columns: 4 }]}">
           <vaadin-text-field
             id="buyerId"
             label="Buyer's ID"
@@ -142,7 +150,7 @@ export class WpeCustomer extends LitElement {
             id="acceptIdBtn"
             @click="${this._acceptButtonClick}"
             colspan="1"
-          >Accept ID
+            >Accept ID
           </vaadin-button>
 
           <vaadin-text-field
@@ -171,23 +179,41 @@ export class WpeCustomer extends LitElement {
           <vaadin-text-field
             label="Earned bonuses"
             readonly
-            value="${this.customer && this.earnedBonuses ? this.earnedBonuses / 100 : ''}"
+            .value="${this.customer && this.txInfo
+              ? this.txInfo.earned / 100
+              : ''}"
           ></vaadin-text-field>
 
-          <div></div><hr /><hr /><div></div>
-
           <div></div>
+          <hr />
+          <hr />
+          <div></div>
+
+          ${this.customer
+            ? html`
+                <vaadin-text-field
+                  id="txField"
+                  label="Unsigned transaction"
+                  readonly
+                  .value="${this.customer && this.txInfo
+                    ? this.txInfo.spend_sign
+                    : ''}"
+                  colspan="1"
+                ></vaadin-text-field>
+              `
+            : html`<div></div>`}
+
           <vaadin-number-field
             id="payByBonuses"
             label="Pay by bonuses"
             ?disabled="${!this.customer}"
             step="0.01"
             min="0"
-            max="${this.customer && this.articles
+            max="${this.customer && this.articles && this.txInfo
               ? Math.min(this.customer.can_spend, this.articles.total) / 100
               : ''}"
-            value="${this.customer && this.articles
-              ? Math.min(this.customer.can_spend, this.articles.total) / 100
+            value="${this.customer && this.articles && this.txInfo
+              ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
               : ''}"
             @change=${e => this._changePayByBonuses(e)}
           ></vaadin-number-field>
@@ -195,13 +221,29 @@ export class WpeCustomer extends LitElement {
             id="payByMoney"
             label="Pay by money"
             readonly
-            value="${this.customer && this.articles
-              ? (this.articles.total - Math.min(this.customer.can_spend, this.articles.total)) / 100
+            value="${this.customer && this.articles && this.txInfo
+              ? (this.articles.total -
+                  Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend)) / 100
               : this?.articles?.total / 100}"
           ></vaadin-text-field>
-          <div></div>
 
-          <div></div><hr /><hr /><div></div>
+          ${this.customer
+            ? html`
+                <vaadin-text-field
+                  id="txSignedField"
+                  label="Signed transaction"
+                  clear-button-visible
+                  .value="${this.txSigned}"
+                  @change="${(e) => {this.txSigned = e.target.value;}}"
+                  colspan="1"
+                ></vaadin-text-field>
+              `
+            : html`<div></div>`}
+
+          <div></div>
+          <hr />
+          <hr />
+          <div></div>
 
           <!--  <vaadin-text-field
             id="txField"
@@ -209,20 +251,18 @@ export class WpeCustomer extends LitElement {
             colspan="2"
           ></vaadin-text-field> -->
 
-          <vaadin-button
-            id="cancelBtn"
-            @click="${this._cancelButtonClick}"
-          >Previous
+          <vaadin-button id="cancelBtn" @click="${this._cancelButtonClick}"
+            >Previous
           </vaadin-button>
-          <div></div><div></div>
+          <div></div>
+          <div></div>
           <vaadin-button
             id="finishBtn"
             ?disabled=${this.loading}
             @click="${this._finishButtonClick}"
             theme="primary"
-          >Finish
+            >Finish
           </vaadin-button>
-
         </vaadin-form-layout>
       </main>
     `;
@@ -262,7 +302,7 @@ export class WpeCustomer extends LitElement {
         can_spend: customerInfo.balance.unlocked
       };
       // Request how much bonuses the buyer will get if buy this articles set
-      this.earnedBonuses = await this._requestEarnedBonuses(this.customer, this.customer.can_spend);
+      this.txInfo = await this._requestEarnedBonuses(this.customer, this.customer.can_spend);
     }
     else {
       // Here must be notification about some errors.
@@ -274,21 +314,16 @@ export class WpeCustomer extends LitElement {
    * Request how much bonuses buyer will get if buy this set of articles
    * @param {Object} customer - buyer object like ${this.customer} property
    * @param {Number} spend    - how much bonuses will be spent
-   * @returns {Number} - earned bonuses
+   * @returns {Object}        - txInfo object ${this.txInfo} OR undefined if some errors
    */
   async _requestEarnedBonuses(customer, spend) {
-    let earnedBonuses = '';
-
     // make TX API request with commit=false
     const txData = await this._requestTxApi(customer, spend, false);
-    if (txData) {
-      earnedBonuses = txData.earned;
-    }
-    else {
+    if (!txData) {
       // Here must be notification about some errors.
       this._notify("<div><b>Error! </b><br>Can not get Transaction Info</div>");
     }
-    return earnedBonuses;
+    return txData;
   }
 
   /**
@@ -298,12 +333,13 @@ export class WpeCustomer extends LitElement {
    * @param {Boolean} isCommit  - dummy transaction if it is false
    * @returns {Object}          - response data object. Undefined if there are errors
    */
-  async _requestTxApi(customer, spend, isCommit) {
+  async _requestTxApi(customer, spend, isCommit, txSigned) {
     let returnedData;
     const body = { ...this.apiBodyTemplates.make_buy_tx };
     body.data.client_id = customer?.id;
     body.data.spend = spend;
     body.data.commit = isCommit;
+    if (txSigned) body.data.spend_sign = txSigned;
     body.data.items = this.articles.goods.map(article => ({...article, qty: article.quantity}));
     console.log(`Make_buy_tx (commit: ${isCommit}) - Request body: ${  JSON.stringify(body)}`);
     // make API request
@@ -357,8 +393,8 @@ export class WpeCustomer extends LitElement {
     // if filed has invalid value, set max
     if (!e.target.validate()) {
       e.target.value =
-        this.customer && this.articles
-          ? Math.min(this.customer.can_spend, this.articles.total) / 100
+        this.customer && this.articles && this.txInfo
+          ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
           : '';
     }
     // Recalculate "Pay by Money" field
@@ -367,7 +403,7 @@ export class WpeCustomer extends LitElement {
           ? (this.articles.total - e.target.value * 100) / 100
           : '';
     // Request how much bonuses buyer will get if buy this set of articles
-    this.earnedBonuses = await this._requestEarnedBonuses(this.customer, parseInt(e.target.value, 10));
+    this.txInfo = await this._requestEarnedBonuses(this.customer, parseInt(e.target.value, 10));
   }
 
   /**
@@ -377,8 +413,9 @@ export class WpeCustomer extends LitElement {
     // Check if it is requesting API
     if (this.loading) return;
     const payByBonusesValue = parseInt(this.shadowRoot.querySelector('#payByBonuses').value, 10);
+    const txSigned = this.txSigned;
     // make real TX API request with commit=true
-    const txData = await this._requestTxApi(this.customer, payByBonusesValue, true);
+    const txData = await this._requestTxApi(this.customer, payByBonusesValue, true, txSigned);
     if (txData) {
       // Some do here in successful case
       const notificationContent = `
