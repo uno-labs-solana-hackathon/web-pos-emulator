@@ -264,7 +264,8 @@ export class WpeCustomer extends LitElement {
    * Clear all customer properties
    */
   _clearCustomer() {
-    // const payByBonusesField = this.shadowRoot.querySelector('#payByBonuses').clear();
+    this.shadowRoot.querySelector('#payByBonuses').value = 0;
+    this.isInputValid = true;
     this.customer = undefined;
     this.txInfo = undefined;
     this.payByBonuses = 0;
