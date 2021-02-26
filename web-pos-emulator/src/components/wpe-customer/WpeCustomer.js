@@ -23,14 +23,10 @@ export class WpeCustomer extends LitElement {
    * @implements {LitElement.properties}
    * @property {Boolean} loading              - true if some data is loading over API
    * @property {Object} articles              - articles description of the current purchase
-   * @property {Object} customer              - the Customer object. Got over combo-box select.
-   * @property {Object} txInfo                - the Transaction object {total, earned, spend, spend_sign}
+   * @property {Object} customer              - (ReadOnly) the Customer object {id, name, balance, can_spend}.
+   * @property {Object} txInfo                - (ReadOnly) the Transaction object {total, earned, spend, spend_sign}
    * @property {string} txSigned              - the signed transaction string signed by buyer
-   *
-   * @property {number} payByBonuses          - bonuses amount that customer wish to spend (not used)
-   * @property {string} tx                    - signed transaction (by customer) to spend ${payByBonuses} (not used)
-   * @property {number} earnedBonuses         - bonuses amount that customer will earn after this purchase
-   *
+   * @property {number} payByBonuses          - bonuses amount that customer wish to spend
    * @property {string} notificationHTML      - what display on notification prompt
    */
   static get properties() {
@@ -41,8 +37,6 @@ export class WpeCustomer extends LitElement {
       txInfo: { type: Object },
       txSigned: { type: String },
       payByBonuses: { type: Number },
-      tx: { type: String },
-      earnedBonuses: { type: Number },
       notificationHTML: { type: String }
     };
   }
@@ -53,6 +47,9 @@ export class WpeCustomer extends LitElement {
    */
   constructor() {
     super();
+    // Initial values
+    this.payByBonuses = 0;
+    this.txSigned = '';
     // Body templates to request API
     this.apiBodyTemplates = {
       find_client: {
@@ -136,8 +133,7 @@ export class WpeCustomer extends LitElement {
           .renderer=${root => {
             root.innerHTML = this.notificationHTML;
           }}
-        >
-        </vaadin-notification>
+        ></vaadin-notification>
         <vaadin-form-layout .responsiveSteps="${[{ columns: 4 }]}">
           <vaadin-text-field
             id="buyerId"
@@ -156,7 +152,7 @@ export class WpeCustomer extends LitElement {
           <vaadin-text-field
             label="Buyers's name"
             readonly
-            value="${this.customer ? this.customer.name : ''}"
+            .value="${this.customer ? this.customer.name : ''}"
             colspan="1"
           ></vaadin-text-field>
 
@@ -174,12 +170,12 @@ export class WpeCustomer extends LitElement {
           <vaadin-text-field
             label="Total"
             readonly
-            value="${this.articles ? this.articles.total / 100 : ''}"
+            value="${this.articles.total / 100}"
           ></vaadin-text-field>
           <vaadin-text-field
             label="Earned bonuses"
             readonly
-            .value="${this.customer && this.txInfo
+            value="${this.customer && this.txInfo
               ? this.txInfo.earned / 100
               : ''}"
           ></vaadin-text-field>
@@ -189,13 +185,13 @@ export class WpeCustomer extends LitElement {
           <hr />
           <div></div>
 
-          ${this.customer
+          ${this.customer && this.txInfo
             ? html`
                 <vaadin-text-field
                   id="txField"
                   label="Unsigned transaction"
                   readonly
-                  .value="${this.customer && this.txInfo
+                  value="${this.customer && this.txInfo
                     ? this.txInfo.spend_sign
                     : ''}"
                   colspan="1"
@@ -206,32 +202,30 @@ export class WpeCustomer extends LitElement {
           <vaadin-number-field
             id="payByBonuses"
             label="Pay by bonuses"
-            ?disabled="${!this.customer}"
+            ?disabled="${!(this.customer && this.txInfo)}"
             step="0.01"
             min="0"
-            max="${this.customer && this.articles && this.txInfo
-              ? Math.min(this.customer.can_spend, this.articles.total) / 100
-              : ''}"
-            value="${this.customer && this.articles && this.txInfo
+            max="${this.customer && this.txInfo
               ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
               : ''}"
+            .value="${this.payByBonuses ? this.payByBonuses / 100 : 0}"
             @change=${e => this._changePayByBonuses(e)}
           ></vaadin-number-field>
           <vaadin-text-field
             id="payByMoney"
             label="Pay by money"
             readonly
-            value="${this.customer && this.articles && this.txInfo
-              ? (this.articles.total -
-                  Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend)) / 100
-              : this?.articles?.total / 100}"
+            value="${this.customer && this.txInfo
+              ? (this.articles.total - this.payByBonuses) / 100
+              : this.articles.total / 100}"
           ></vaadin-text-field>
 
-          ${this.customer
+          ${this.customer && this.txInfo
             ? html`
                 <vaadin-text-field
                   id="txSignedField"
                   label="Signed transaction"
+                  ?disabled="${this.payByBonuses === 0}"
                   clear-button-visible
                   .value="${this.txSigned}"
                   @change="${(e) => {this.txSigned = e.target.value;}}"
@@ -269,14 +263,24 @@ export class WpeCustomer extends LitElement {
   }
 
   /**
+   * Clear all customer properties
+   */
+  _clearCustomer() {
+    this.customer = undefined;
+    this.txInfo = undefined;
+    this.payByBonuses = 0;
+    this.txSigned = '';
+  }
+
+  /**
    * Listener function on "Accept ID" button
    */
   async _acceptButtonClick() {
+    // Reset current buyer
+    this._clearCustomer();
     const id = this.shadowRoot.querySelector('#buyerId').value;
     if (id) {
       this._findCustomerById(id);
-    } else {
-      this.customer = undefined;
     }
   }
 
@@ -286,8 +290,6 @@ export class WpeCustomer extends LitElement {
    * @param {string} id - user id
    */
   async _findCustomerById(id) {
-    // Reset current buyer
-    this.customer = undefined;
     // Get Customer by ID over API
     const body = { ...this.apiBodyTemplates.find_client };
     body.data.client_id = id;
@@ -302,7 +304,7 @@ export class WpeCustomer extends LitElement {
         can_spend: customerInfo.balance.unlocked
       };
       // Request how much bonuses the buyer will get if buy this articles set
-      this.txInfo = await this._requestEarnedBonuses(this.customer, this.customer.can_spend);
+      this.txInfo = await this._requestEarnedBonuses(this.customer.can_spend);
     }
     else {
       // Here must be notification about some errors.
@@ -316,13 +318,15 @@ export class WpeCustomer extends LitElement {
    * @param {Number} spend    - how much bonuses will be spent
    * @returns {Object}        - txInfo object ${this.txInfo} OR undefined if some errors
    */
-  async _requestEarnedBonuses(customer, spend) {
+  async _requestEarnedBonuses(spend) {
     // make TX API request with commit=false
-    const txData = await this._requestTxApi(customer, spend, false);
+    const txData = await this._requestTxApi(spend, false);
     if (!txData) {
       // Here must be notification about some errors.
       this._notify("<div><b>Error! </b><br>Can not get Transaction Info</div>");
     }
+    // Clear signed transaction
+    this.txSigned = '';
     return txData;
   }
 
@@ -333,10 +337,10 @@ export class WpeCustomer extends LitElement {
    * @param {Boolean} isCommit  - dummy transaction if it is false
    * @returns {Object}          - response data object. Undefined if there are errors
    */
-  async _requestTxApi(customer, spend, isCommit, txSigned) {
+  async _requestTxApi(spend, isCommit, txSigned) {
     let returnedData;
     const body = { ...this.apiBodyTemplates.make_buy_tx };
-    body.data.client_id = customer?.id;
+    body.data.client_id = this.customer?.id;
     body.data.spend = spend;
     body.data.commit = isCommit;
     if (txSigned) body.data.spend_sign = txSigned;
@@ -389,21 +393,24 @@ export class WpeCustomer extends LitElement {
    * @param {Object} e - event object
    */
   async _changePayByBonuses(e) {
-    const payByMoney = this.shadowRoot.querySelector('#payByMoney');
+    // const payByMoney = this.shadowRoot.querySelector('#payByMoney');
     // if filed has invalid value, set max
     if (!e.target.validate()) {
-      e.target.value =
+      /* e.target.value =
         this.customer && this.articles && this.txInfo
           ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
-          : '';
+          : ''; */
+      this.payByBonuses = 0;
+    } else {
+      this.payByBonuses = parseInt(e.target.value, 10) * 100;
     }
     // Recalculate "Pay by Money" field
-    payByMoney.value =
+    /* payByMoney.value =
         this.customer && this.articles
           ? (this.articles.total - e.target.value * 100) / 100
-          : '';
+          : ''; */
     // Request how much bonuses buyer will get if buy this set of articles
-    this.txInfo = await this._requestEarnedBonuses(this.customer, parseInt(e.target.value, 10));
+    this.txInfo = await this._requestEarnedBonuses(this.payByBonuses);
   }
 
   /**
@@ -412,10 +419,8 @@ export class WpeCustomer extends LitElement {
   async _finishButtonClick() {
     // Check if it is requesting API
     if (this.loading) return;
-    const payByBonusesValue = parseInt(this.shadowRoot.querySelector('#payByBonuses').value, 10);
-    const txSigned = this.txSigned;
     // make real TX API request with commit=true
-    const txData = await this._requestTxApi(this.customer, payByBonusesValue, true, txSigned);
+    const txData = await this._requestTxApi(this.payByBonuses, true, this.txSigned);
     if (txData) {
       // Some do here in successful case
       const notificationContent = `
