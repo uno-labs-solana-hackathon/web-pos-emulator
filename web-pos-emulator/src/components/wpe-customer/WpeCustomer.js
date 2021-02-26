@@ -21,6 +21,7 @@ export class WpeCustomer extends LitElement {
    * Properties description - LitElement-properties
    * @static
    * @implements {LitElement.properties}
+   * @property {Boolean} isInputValid         - is some input value valid (to enable "Finish" button)
    * @property {Boolean} loading              - true if some data is loading over API
    * @property {Object} articles              - articles description of the current purchase
    * @property {Object} customer              - (ReadOnly) the Customer object {id, name, balance, can_spend}.
@@ -31,6 +32,7 @@ export class WpeCustomer extends LitElement {
    */
   static get properties() {
     return {
+      isInputValid: { type: Boolean },
       loading: { type: Boolean },
       articles: { type: Object },
       customer: { type: Object },
@@ -48,6 +50,7 @@ export class WpeCustomer extends LitElement {
   constructor() {
     super();
     // Initial values
+    this.isInputValid = true;
     this.payByBonuses = 0;
     this.txSigned = '';
     // Body templates to request API
@@ -202,14 +205,15 @@ export class WpeCustomer extends LitElement {
           <vaadin-number-field
             id="payByBonuses"
             label="Pay by bonuses"
+            required
             ?disabled="${!(this.customer && this.txInfo)}"
             step="0.01"
             min="0"
             max="${this.customer && this.txInfo
               ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
               : ''}"
-            .value="${this.payByBonuses ? this.payByBonuses / 100 : 0}"
-            @change=${e => this._changePayByBonuses(e)}
+            .value="${this.payByBonuses / 100}"
+            @input=${e => this._changePayByBonuses(e)}
           ></vaadin-number-field>
           <vaadin-text-field
             id="payByMoney"
@@ -227,7 +231,7 @@ export class WpeCustomer extends LitElement {
                   label="Signed transaction"
                   ?disabled="${this.payByBonuses === 0}"
                   clear-button-visible
-                  .value="${this.txSigned}"
+                  .value="${this.txInfo?.spend_sign ? this.txSigned : ''}"
                   @change="${(e) => {this.txSigned = e.target.value;}}"
                   colspan="1"
                 ></vaadin-text-field>
@@ -239,12 +243,6 @@ export class WpeCustomer extends LitElement {
           <hr />
           <div></div>
 
-          <!--  <vaadin-text-field
-            id="txField"
-            label="Signed customer transaction"
-            colspan="2"
-          ></vaadin-text-field> -->
-
           <vaadin-button id="cancelBtn" @click="${this._cancelButtonClick}"
             >Previous
           </vaadin-button>
@@ -252,7 +250,7 @@ export class WpeCustomer extends LitElement {
           <div></div>
           <vaadin-button
             id="finishBtn"
-            ?disabled=${this.loading}
+            ?disabled=${this.loading  || (!this.isInputValid) || (this.payByBonuses > 0 && this.txInfo?.spend_sign && (!this.txSigned))}
             @click="${this._finishButtonClick}"
             theme="primary"
             >Finish
@@ -266,6 +264,7 @@ export class WpeCustomer extends LitElement {
    * Clear all customer properties
    */
   _clearCustomer() {
+    // const payByBonusesField = this.shadowRoot.querySelector('#payByBonuses').clear();
     this.customer = undefined;
     this.txInfo = undefined;
     this.payByBonuses = 0;
@@ -293,7 +292,7 @@ export class WpeCustomer extends LitElement {
     // Get Customer by ID over API
     const body = { ...this.apiBodyTemplates.find_client };
     body.data.client_id = id;
-    console.log(`Find_client - Request body: ${  JSON.stringify(body)}`);
+    this._logging(`Find_client - Request body: ${  JSON.stringify(body)}`);
     // make API request with "find_client" method
     const customerInfo = await this._makeApiRequest(body);
     if (customerInfo) {
@@ -304,7 +303,7 @@ export class WpeCustomer extends LitElement {
         can_spend: customerInfo.balance.unlocked
       };
       // Request how much bonuses the buyer will get if buy this articles set
-      this.txInfo = await this._requestEarnedBonuses(this.customer.can_spend);
+      this.txInfo = await this._requestEarnedBonuses(this.payByBonuses);
     }
     else {
       // Here must be notification about some errors.
@@ -345,7 +344,7 @@ export class WpeCustomer extends LitElement {
     body.data.commit = isCommit;
     if (txSigned) body.data.spend_sign = txSigned;
     body.data.items = this.articles.goods.map(article => ({...article, qty: article.quantity}));
-    console.log(`Make_buy_tx (commit: ${isCommit}) - Request body: ${  JSON.stringify(body)}`);
+    this._logging(`Make_buy_tx (commit: ${isCommit}) - Request body: ${JSON.stringify(body)}`);
     // make API request
     const txData = await this._makeApiRequest(body);
     if (txData) {
@@ -354,7 +353,7 @@ export class WpeCustomer extends LitElement {
     else {
       // Here must be notification about some errors.
       // this._notify("<div><b>Errors! </b><br>Can not accomplish this transation</div>");
-      console.log('Transaction errors!');
+      this._logging('Transaction errors!');
     }
     return returnedData;
   }
@@ -369,7 +368,7 @@ export class WpeCustomer extends LitElement {
     let returnData; // initialize by undefined;
     try {
       const response = await fetch(GLOBAL_PARAMS.getCustomerUrlPost, {
-        method: 'POST', // 'POST' или 'PUT'
+        method: 'POST',
         body: JSON.stringify(body),
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
@@ -379,7 +378,7 @@ export class WpeCustomer extends LitElement {
       });
       const responseJson = await response.json();
       if (responseJson?.result?.res === 'OK') { returnData = responseJson.data; }
-      console.log('API response data: ', JSON.stringify(responseJson));
+      this._logging('API response data: ', JSON.stringify(responseJson));
     } catch (error) {
       console.error('API Network Error Exception:', error);
       this._notify("<div><b>Error! </b><br>Some network errors</div>");
@@ -393,24 +392,21 @@ export class WpeCustomer extends LitElement {
    * @param {Object} e - event object
    */
   async _changePayByBonuses(e) {
-    // const payByMoney = this.shadowRoot.querySelector('#payByMoney');
-    // if filed has invalid value, set max
+    // if filed has invalid value
     if (!e.target.validate()) {
-      /* e.target.value =
-        this.customer && this.articles && this.txInfo
-          ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
-          : ''; */
-      this.payByBonuses = 0;
+      // this.payByBonuses = 0;
+      // -- e.target.value = this.payByBonuses / 100;
+      this._notify("<div><b>Warning! </b><br>Wrong Bonuses value</div>");
+      // set ${this.isInputValid} into false to prevent click on "Finish" button.
+      this.isInputValid = false;
     } else {
       this.payByBonuses = parseInt(e.target.value, 10) * 100;
+      // set ${this.isInputValid} into true to allow click on "Finish" button.
+      this.isInputValid = true;
+      // Request how much bonuses buyer will get if buy this set of articles,
+      // and transaction string which buyer have to sign.
+      this.txInfo = await this._requestEarnedBonuses(this.payByBonuses);
     }
-    // Recalculate "Pay by Money" field
-    /* payByMoney.value =
-        this.customer && this.articles
-          ? (this.articles.total - e.target.value * 100) / 100
-          : ''; */
-    // Request how much bonuses buyer will get if buy this set of articles
-    this.txInfo = await this._requestEarnedBonuses(this.payByBonuses);
   }
 
   /**
@@ -419,10 +415,13 @@ export class WpeCustomer extends LitElement {
   async _finishButtonClick() {
     // Check if it is requesting API
     if (this.loading) return;
+    // Some logic about txSign parameter may be here.
+    // Some restrictions is placed into markup of render() already.
+
     // make real TX API request with commit=true
     const txData = await this._requestTxApi(this.payByBonuses, true, this.txSigned);
     if (txData) {
-      // Some do here in successful case
+      // In successful case
       const notificationContent = `
         <div style="margin: 0 auto;">
           <strong>Successful transaction!</strong><hr />
@@ -442,7 +441,7 @@ export class WpeCustomer extends LitElement {
     else {
       // Here must be notification about some errors.
       this._notify("<b>Error</b><br>Can not accomplish this transation !");
-      // Some do here in unsuccessful case
+      // Some work may be here in unsuccessful case
     }
   }
 
@@ -470,5 +469,12 @@ export class WpeCustomer extends LitElement {
         detail: { message: 'Customer dialog canceled.' },
       })
     );
+  }
+
+  /**
+   * Logging
+   */
+  _logging(messages) {
+    if (GLOBAL_PARAMS.isLogging) console.log(messages);
   }
 }
