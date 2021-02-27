@@ -25,7 +25,7 @@ export class WpeCustomer extends LitElement {
    * @property {Boolean} loading              - true if some data is loading over API
    * @property {Object} articles              - articles description of the current purchase
    * @property {Object} customer              - (ReadOnly) the Customer object {id, name, balance, can_spend}.
-   * @property {Object} txInfo                - (ReadOnly) the Transaction object {total, earned, spend, spend_sign}
+   * @property {Object} txInfo                - (ReadOnly) the Transaction object {total, earned, spend, spend_sign, spend_raw_tx}
    * @property {string} txSigned              - the signed transaction string signed by buyer
    * @property {number} payByBonuses          - bonuses amount that customer wish to spend
    * @property {string} notificationHTML      - what display on notification prompt
@@ -49,30 +49,10 @@ export class WpeCustomer extends LitElement {
    */
   constructor() {
     super();
-    // Initial values
+    // Initial properties values
     this.isInputValid = true;
     this.payByBonuses = 0;
     this.txSigned = '';
-    // Body templates to request API
-    this.apiBodyTemplates = {
-      find_client: {
-        method: 'find_client',
-        data: {
-          client_id: '',
-          is_create_if_not_found: true,
-        },
-      },
-      make_buy_tx: {
-        method: 'make_buy_tx',
-        data: {
-          client_id: '',
-          spend: 0,
-          spend_sign: '',
-          items: [],
-          commit: false
-        },
-      },
-    };
   }
 
   /**
@@ -188,14 +168,14 @@ export class WpeCustomer extends LitElement {
           <hr />
           <div></div>
 
-          ${this.customer && this.txInfo
+          ${this.customer && this.txInfo && this.txInfo.spend_raw_tx
             ? html`
                 <vaadin-text-field
                   id="txField"
                   label="Unsigned transaction"
                   readonly
                   value="${this.customer && this.txInfo
-                    ? this.txInfo.spend_sign
+                    ? this.txInfo.spend_raw_tx
                     : ''}"
                   colspan="1"
                 ></vaadin-text-field>
@@ -210,7 +190,7 @@ export class WpeCustomer extends LitElement {
             step="0.01"
             min="0"
             max="${this.customer && this.txInfo
-              ? Math.min(this.customer.can_spend, this.articles.total, this.txInfo.spend) / 100
+              ? Math.min(this.customer.can_spend, this.articles.total) / 100
               : ''}"
             .value="${this.payByBonuses / 100}"
             @input=${e => this._changePayByBonuses(e)}
@@ -224,15 +204,15 @@ export class WpeCustomer extends LitElement {
               : this.articles.total / 100}"
           ></vaadin-text-field>
 
-          ${this.customer && this.txInfo
+          ${this.customer && this.txInfo && this.txInfo.spend_raw_tx
             ? html`
                 <vaadin-text-field
                   id="txSignedField"
                   label="Signed transaction"
                   ?disabled="${this.payByBonuses === 0}"
                   clear-button-visible
-                  .value="${this.txInfo?.spend_sign ? this.txSigned : ''}"
-                  @change="${(e) => {this.txSigned = e.target.value;}}"
+                  .value="${this.txInfo?.spend_raw_tx ? this.txSigned : ''}"
+                  @input="${(e) => { this.txSigned = e.target.value; }}"
                   colspan="1"
                 ></vaadin-text-field>
               `
@@ -250,7 +230,7 @@ export class WpeCustomer extends LitElement {
           <div></div>
           <vaadin-button
             id="finishBtn"
-            ?disabled=${this.loading  || (!this.isInputValid) || (this.payByBonuses > 0 && this.txInfo?.spend_sign && (!this.txSigned))}
+            ?disabled=${this.loading  || (!this.isInputValid) || (this.payByBonuses > 0 && this.txInfo?.spend_raw_tx && (!this.txSigned))}
             @click="${this._finishButtonClick}"
             theme="primary"
             >Finish
@@ -291,9 +271,9 @@ export class WpeCustomer extends LitElement {
    */
   async _findCustomerById(id) {
     // Get Customer by ID over API
-    const body = { ...this.apiBodyTemplates.find_client };
+    const body = { method: 'find_client', data: { is_create_if_not_found: true } };
     body.data.client_id = id;
-    this._logging(`Find_client - Request body: ${  JSON.stringify(body)}`);
+    this._logging(`Find_client - Request body: ${JSON.stringify(body)}`);
     // make API request with "find_client" method
     const customerInfo = await this._makeApiRequest(body);
     if (customerInfo) {
@@ -337,13 +317,15 @@ export class WpeCustomer extends LitElement {
    * @param {Boolean} isCommit  - dummy transaction if it is false
    * @returns {Object}          - response data object. Undefined if there are errors
    */
-  async _requestTxApi(spend, isCommit, txSigned) {
+  async _requestTxApi(spend, isCommit) {
     let returnedData;
-    const body = { ...this.apiBodyTemplates.make_buy_tx };
+    const body = { method: 'make_buy_tx', data: { items: [], } };
     body.data.client_id = this.customer?.id;
     body.data.spend = spend;
     body.data.commit = isCommit;
-    if (txSigned) body.data.spend_sign = txSigned;
+    if (this.txSigned && isCommit === true) {
+      body.data.spend_sign = this.txSigned;
+    }
     body.data.items = this.articles.goods.map(article => ({...article, qty: article.quantity}));
     this._logging(`Make_buy_tx (commit: ${isCommit}) - Request body: ${JSON.stringify(body)}`);
     // make API request
@@ -379,7 +361,7 @@ export class WpeCustomer extends LitElement {
       });
       const responseJson = await response.json();
       if (responseJson?.result?.res === 'OK') { returnData = responseJson.data; }
-      this._logging('API response data: ', JSON.stringify(responseJson));
+      this._logging(`API response data: ${JSON.stringify(responseJson)}`);
     } catch (error) {
       console.error('API Network Error Exception:', error);
       this._notify("<div><b>Error! </b><br>Some network errors</div>");
@@ -420,7 +402,7 @@ export class WpeCustomer extends LitElement {
     // Some restrictions is placed into markup of render() already.
 
     // make real TX API request with commit=true
-    const txData = await this._requestTxApi(this.payByBonuses, true, this.txSigned);
+    const txData = await this._requestTxApi(this.payByBonuses, true);
     if (txData) {
       // In successful case
       const notificationContent = `

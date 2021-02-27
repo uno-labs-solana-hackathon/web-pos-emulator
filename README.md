@@ -1,5 +1,8 @@
 # web-pos-emulator
-This is lite Web POS emulator for hackathon purpose.
+
+This project is a web POS emulator for hackathon purposes.
+
 
 ## Documentation
-Please read ./web-pos-emulator/README.md
+
+Please read the **./web-pos-emulator/README.md** file
