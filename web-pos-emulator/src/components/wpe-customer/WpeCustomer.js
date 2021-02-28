@@ -10,6 +10,8 @@ import '@vaadin/vaadin-text-field/vaadin-number-field';
 import '@vaadin/vaadin-text-field/vaadin-integer-field';
 import '@vaadin/vaadin-combo-box';
 import '@vaadin/vaadin-notification';
+import '@vaadin/vaadin-button';
+import '@vaadin/vaadin-icons';
 import { GLOBAL_PARAMS } from './config.js';
 
 /**
@@ -156,7 +158,8 @@ export class WpeCustomer extends LitElement {
             label="Total price"
             readonly
             value="${this.articles.total / 100}"
-          ></vaadin-text-field>
+          ><div slot="prefix">$</div>
+          </vaadin-text-field>
           <vaadin-text-field
             label="Bonuses to be earned"
             readonly
@@ -180,7 +183,14 @@ export class WpeCustomer extends LitElement {
                     ? this.txInfo.spend_raw_tx
                     : ''}"
                   colspan="1"
-                ></vaadin-text-field>
+                >
+                  <div slot="suffix" title="Copy to Clipboard">
+                    <iron-icon
+                      icon="vaadin:copy-o"
+                      @click="${() => { this._copyTxToClipboard(); }}"
+                    ></iron-icon>
+                  </div>
+                </vaadin-text-field>
               `
             : html`<div></div>`}
 
@@ -204,7 +214,8 @@ export class WpeCustomer extends LitElement {
             value="${this.customer && this.txInfo
               ? (this.articles.total - this.payByBonuses) / 100
               : this.articles.total / 100}"
-          ></vaadin-text-field>
+          ><div slot="prefix">$</div>
+          </vaadin-text-field>
 
           ${this.customer && this.txInfo && this.txInfo.spend_raw_tx
             ? html`
@@ -365,7 +376,7 @@ export class WpeCustomer extends LitElement {
       if (responseJson?.result?.res === 'OK') { returnData = responseJson.data; }
       this._logging(`API response data: ${JSON.stringify(responseJson)}`);
     } catch (error) {
-      console.error('API Network Error Exception:', error);
+      this._logging(`API Network Error Exception: ${error}`);
       this._notify("<div><b>Error! </b><br>Some network errors</div>");
     }
     this.loading = false;
@@ -425,7 +436,7 @@ export class WpeCustomer extends LitElement {
     }
     else {
       // Here must be notification about some errors.
-      this._notify("<b>Error</b><br>Can not accomplish this transation !");
+      this._notify("<div><b>Error</b><br>Can not accomplish this transation !</div>");
       // Some work may be here in unsuccessful case
     }
   }
@@ -454,6 +465,15 @@ export class WpeCustomer extends LitElement {
         detail: { message: 'Customer dialog canceled.' },
       })
     );
+  }
+
+  /**
+   * Copy content of txField to clipboard
+   */
+  async _copyTxToClipboard() {
+    const tx = this.shadowRoot.querySelector('#txField').value;
+    await navigator.clipboard.writeText(tx);
+    this._notify("<div>Transaction copied to clipboard !</div>", 'middle', 2000);
   }
 
   /**
