@@ -53,6 +53,8 @@ export class WpeCustomer extends LitElement {
     this.isInputValid = true;
     this.payByBonuses = 0;
     this.txSigned = '';
+    // Turn on logging
+    if (window.location.hash === '#logging') this._isLogging = true;
   }
 
   /**
@@ -133,30 +135,30 @@ export class WpeCustomer extends LitElement {
           </vaadin-button>
 
           <vaadin-text-field
-            label="Buyers's name"
+            label="Buyer's name"
             readonly
             .value="${this.customer ? this.customer.name : ''}"
             colspan="1"
           ></vaadin-text-field>
 
           <vaadin-text-field
-            label="Balance"
+            label="Total bonuses"
             readonly
             value="${this.customer ? this.customer.balance / 100 : ''}"
           ></vaadin-text-field>
           <vaadin-text-field
-            label="Can spend"
+            label="Bonuses you can spend"
             readonly
             value="${this.customer ? this.customer.can_spend / 100 : ''}"
           ></vaadin-text-field>
 
           <vaadin-text-field
-            label="Total"
+            label="Total price"
             readonly
             value="${this.articles.total / 100}"
           ></vaadin-text-field>
           <vaadin-text-field
-            label="Earned bonuses"
+            label="Bonuses to be earned"
             readonly
             value="${this.customer && this.txInfo
               ? this.txInfo.earned / 100
@@ -184,7 +186,7 @@ export class WpeCustomer extends LitElement {
 
           <vaadin-number-field
             id="payByBonuses"
-            label="Pay by bonuses"
+            label="Pay with bonuses"
             required
             ?disabled="${!(this.customer && this.txInfo)}"
             step="0.01"
@@ -197,7 +199,7 @@ export class WpeCustomer extends LitElement {
           ></vaadin-number-field>
           <vaadin-text-field
             id="payByMoney"
-            label="Pay by money"
+            label="Pay with money"
             readonly
             value="${this.customer && this.txInfo
               ? (this.articles.total - this.payByBonuses) / 100
@@ -379,11 +381,11 @@ export class WpeCustomer extends LitElement {
     if (!e.target.validate()) {
       // this.payByBonuses = 0;
       // -- e.target.value = this.payByBonuses / 100;
-      this._notify("<div><b>Warning! </b><br>Wrong Bonuses value</div>");
+      if (e.target.value) this._notify("<div><b>Warning! </b><br>Wrong Bonuses value</div>");
       // set ${this.isInputValid} into false to prevent click on "Finish" button.
       this.isInputValid = false;
     } else {
-      this.payByBonuses = parseInt(e.target.value, 10) * 100;
+      this.payByBonuses = Math.round(e.target.value * 100);
       // set ${this.isInputValid} into true to allow click on "Finish" button.
       this.isInputValid = true;
       // Request how much bonuses buyer will get if buy this set of articles,
@@ -458,6 +460,6 @@ export class WpeCustomer extends LitElement {
    * Logging
    */
   _logging(messages) {
-    if (GLOBAL_PARAMS.isLogging) console.log(messages);
+    if (GLOBAL_PARAMS.isLogging || this._isLogging) console.log(messages);
   }
 }

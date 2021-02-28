@@ -1,6 +1,6 @@
 const GLOBAL_PARAMS = {
   getCustomerUrlPost : "https://api.gplatform.org/sol/api",
-  isLogging: true,
+  isLogging: false,
 }
 
 // Body templates to request API (only for reference)
