@@ -450,8 +450,8 @@ export class WpeCustomer extends LitElement {
   _notify(textHTML, position, duration) {
     this.notificationHTML = textHTML;
     const notification = this.shadowRoot.querySelector('#notification');
-    if (position) notification.position = position;
-    if (duration) notification.duration = duration;
+    notification.position = position ?? 'bottom-start';
+    notification.duration = duration ?? 4000;
     notification.open();
   }
 
@@ -472,8 +472,13 @@ export class WpeCustomer extends LitElement {
    */
   async _copyTxToClipboard() {
     const tx = this.shadowRoot.querySelector('#txField').value;
-    await navigator.clipboard.writeText(tx);
-    this._notify("<div>Transaction copied to clipboard !</div>", 'middle', 2000);
+    try {
+      await navigator.clipboard.writeText(tx);
+      this._notify("<div>Transaction copied to clipboard !</div>", 'middle', 2000);
+    } catch (err) {
+      this._logging(`Failed to copy to clipboard: ${err}`);
+      this._notify("<div><b>Error !</b><br>Failed to copy to clipboard (Not <b>HTTPS</b> connection)!</div>");
+    }
   }
 
   /**
