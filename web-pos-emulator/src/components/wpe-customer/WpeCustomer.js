@@ -26,9 +26,10 @@ export class WpeCustomer extends LitElement {
    * @property {Boolean} isInputValid         - is some input value valid (to enable "Finish" button)
    * @property {Boolean} loading              - true if some data is loading over API
    * @property {Object} articles              - articles description of the current purchase
-   * @property {Object} customer              - (ReadOnly) the Customer object {id, name, balance, can_spend}.
-   * @property {Object} txInfo                - (ReadOnly) the Transaction object {total, earned, spend, spend_sign, spend_raw_tx}
-   * @property {string} txSigned              - the signed transaction string signed by buyer
+   * @property {Object} customer              - (ReadOnly) the Customer object {id, name, balance, can_spend, is_on_chain}.
+   * @property {Object} txInfo                - (ReadOnly) the Transaction object {total, earned, spend, spend_sign, spend_raw_tx, new_account_raw_tx}
+   * @property {string} newAccountTxSigned    - the signed transaction string signed by buyer on creating account on blockchain
+   * @property {string} txSigned              - the signed transaction string signed by buyer on spending bonuses
    * @property {number} payByBonuses          - bonuses amount that customer wish to spend
    * @property {string} notificationHTML      - what display on notification prompt
    */
@@ -39,6 +40,7 @@ export class WpeCustomer extends LitElement {
       articles: { type: Object },
       customer: { type: Object },
       txInfo: { type: Object },
+      newAccountTxSigned: { type: String},
       txSigned: { type: String },
       payByBonuses: { type: Number },
       notificationHTML: { type: String }
@@ -55,6 +57,7 @@ export class WpeCustomer extends LitElement {
     this.isInputValid = true;
     this.payByBonuses = 0;
     this.txSigned = '';
+    this.newAccountTxSigned = '';
     // Turn on logging
     if (window.location.hash === '#logging') this._isLogging = true;
   }
@@ -168,10 +171,44 @@ export class WpeCustomer extends LitElement {
               : ''}"
           ></vaadin-text-field>
 
-          <div></div>
+
+          ${this.customer && this.txInfo && this.txInfo.new_account_raw_tx
+            ? html`
+                <vaadin-text-field
+                  id="newAccountTxField"
+                  label="Unsigned TX 'New Account'"
+                  readonly
+                  value="${this.customer && this.txInfo
+                    ? this.txInfo.new_account_raw_tx
+                    : ''}"
+                  colspan="1"
+                >
+                  <div slot="suffix" title="Copy to Clipboard">
+                    <iron-icon
+                      icon="vaadin:copy-o"
+                      @click="${() => { this._copyTxToClipboard('#newAccountTxField'); }}"
+                    ></iron-icon>
+                  </div>
+                </vaadin-text-field>
+              `
+            : html`<div></div>`}
+
           <hr />
           <hr />
-          <div></div>
+
+          ${this.customer && this.txInfo && this.txInfo.new_account_raw_tx
+            ? html`
+                <vaadin-text-field
+                  id="newAccountTxSignedField"
+                  label="Signed TX 'New Account'"
+                  clear-button-visible
+                  .value="${this.txInfo?.new_account_raw_tx ? this.newAccountTxSigned : ''}"
+                  @input="${(e) => { this.newAccountTxSigned = e.target.value; }}"
+                  colspan="1"
+                ></vaadin-text-field>
+              `
+            : html`<div></div>`}
+
 
           ${this.customer && this.txInfo && this.txInfo.spend_raw_tx
             ? html`
@@ -187,7 +224,7 @@ export class WpeCustomer extends LitElement {
                   <div slot="suffix" title="Copy to Clipboard">
                     <iron-icon
                       icon="vaadin:copy-o"
-                      @click="${() => { this._copyTxToClipboard(); }}"
+                      @click="${() => { this._copyTxToClipboard('#txField'); }}"
                     ></iron-icon>
                   </div>
                 </vaadin-text-field>
@@ -263,6 +300,7 @@ export class WpeCustomer extends LitElement {
     this.txInfo = undefined;
     this.payByBonuses = 0;
     this.txSigned = '';
+    this.newAccountTxSigned = '';
   }
 
   /**
@@ -294,7 +332,8 @@ export class WpeCustomer extends LitElement {
         id: customerInfo.id,
         name: customerInfo.name ? customerInfo.name : `ID: ${customerInfo.id}`,
         balance: customerInfo.balance.total,
-        can_spend: customerInfo.balance.unlocked
+        can_spend: customerInfo.balance.unlocked,
+        is_on_chain: customerInfo.is_on_chain
       };
       // Request how much bonuses the buyer will get if buy this articles set
       this.txInfo = await this._requestEarnedBonuses(this.payByBonuses);
@@ -307,7 +346,6 @@ export class WpeCustomer extends LitElement {
 
   /**
    * Request how much bonuses buyer will get if buy this set of articles
-   * @param {Object} customer - buyer object like ${this.customer} property
    * @param {Number} spend    - how much bonuses will be spent
    * @returns {Object}        - txInfo object ${this.txInfo} OR undefined if some errors
    */
@@ -320,12 +358,12 @@ export class WpeCustomer extends LitElement {
     }
     // Clear signed transaction
     this.txSigned = '';
+    this.newAccountTxSigned = '';
     return txData;
   }
 
   /**
    * Request to do transaction over API
-   * @param {Object} customer   - buyer object like ${this.customer} property
    * @param {Number} spend      - how much bonuses will be spent
    * @param {Boolean} isCommit  - dummy transaction if it is false
    * @returns {Object}          - response data object. Undefined if there are errors
@@ -336,9 +374,13 @@ export class WpeCustomer extends LitElement {
     body.data.client_id = this.customer?.id;
     body.data.spend = spend;
     body.data.commit = isCommit;
-    if (this.txSigned && isCommit === true) {
-      body.data.spend_sign = this.txSigned;
+    if (isCommit === true) {
+      if (this.txSigned) body.data.spend_sign = this.txSigned;
+      if (this.newAccountTxSigned) body.data.new_account_sign = this.newAccountTxSigned;
+      if (this.txInfo.spend_raw_tx) body.data.spend_raw_tx = this.txInfo.spend_raw_tx;
+      if (this.txInfo.new_account_raw_tx) body.data.new_account_raw_tx = this.txInfo.new_account_raw_tx;
     }
+
     body.data.items = this.articles.goods.map(article => ({...article, qty: article.quantity}));
     this._logging(`Make_buy_tx (commit: ${isCommit}) - Request body: ${JSON.stringify(body)}`);
     // make API request
@@ -470,8 +512,8 @@ export class WpeCustomer extends LitElement {
   /**
    * Copy content of txField to clipboard
    */
-  async _copyTxToClipboard() {
-    const tx = this.shadowRoot.querySelector('#txField').value;
+  async _copyTxToClipboard(elementId) {
+    const tx = this.shadowRoot.querySelector(elementId).value;
     try {
       await navigator.clipboard.writeText(tx);
       this._notify("<div>Transaction copied to clipboard !</div>", 'middle', 2000);
