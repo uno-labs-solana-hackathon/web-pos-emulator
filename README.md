@@ -3,12 +3,15 @@
 This project is a web application which emulates the work of the POS terminal (**for the purposes of the Solana hackathon**).
 
 The POS emulator allows the "cashier" to do the following:
-- to select products from the catalog and add them to the cart
+- to select products from the catalog and add them to the cart (Figure 1)
 - to make unauthorized purchases
 - to authorize the buyer by his ID (address in the blockchain) and show buyer's bonuses info
 - to show an unsigned account creation transaction for a new customer to be sent for signature to his mobile wallet (Figure 2)
 - to accept back an account creation transaction for a new customer signed by their mobile wallet (Figure 2)
 - to pay for the purchase with the buyer's bonuses - Figure 6 - (by sending to and receiving back a signed transaction to write off bonuses from the buyer's mobile wallet).
+
+https://rosin-pos.gplatform.org
+
 
 ## Screen shots
 
