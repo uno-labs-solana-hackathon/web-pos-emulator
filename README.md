@@ -12,22 +12,28 @@ The POS emulator allows the "cashier" to do the following:
 
 ## Screen shots
 
-Fig 1
+### Figure 1
+
 ![изображение](https://user-images.githubusercontent.com/6206939/109153757-be7b3280-7786-11eb-83d2-c0160fb4a5f6.png)
 
-Fig 2
+### Figure 2
+
 ![изображение](https://user-images.githubusercontent.com/6206939/109638825-e8a66900-7b67-11eb-9a11-be02ed23194b.png)
 
-Fig 3
+### Figure 3
+
 ![изображение](https://user-images.githubusercontent.com/6206939/109639158-4c309680-7b68-11eb-910a-112f7187f2e6.png)
 
-Fig 4
+### Figure 4
+
 ![изображение](https://user-images.githubusercontent.com/6206939/109639317-771aea80-7b68-11eb-98bf-8cdad436aa45.png)
 
-Fig 5
+### Figure 5
+
 ![изображение](https://user-images.githubusercontent.com/6206939/109639369-89952400-7b68-11eb-93c0-9da8781c7dd1.png)
 
-Fig 6
+### Figure 6
+
 ![изображение](https://user-images.githubusercontent.com/6206939/109639531-bcd7b300-7b68-11eb-86c0-6831578ad74b.png)
 
 
