@@ -1,4 +1,4 @@
-# Web POS emulator
+# Rosin Loyalty - web POS emulator
 
 This project is a web application which emulates the work of the POS terminal (**for the purposes of the Solana hackathon**).
 
@@ -10,7 +10,7 @@ The POS emulator allows the "cashier" to do the following:
 - to accept back an account creation transaction for a new customer signed by their mobile wallet (Figure 2)
 - to pay for the purchase with the buyer's bonuses - Figure 6 - (by sending to and receiving back a signed transaction to write off bonuses from the buyer's mobile wallet).
 
-https://rosin-pos.gplatform.org
+Link: https://rosin-pos.gplatform.org
 
 
 ## Screen shots
