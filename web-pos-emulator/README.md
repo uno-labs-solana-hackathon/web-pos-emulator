@@ -4,7 +4,7 @@ This web app (POS emulator) is built with **open-wc starter** project which is i
 Vaadin web components are also actively used.
 
 Links:
-https://open-wc.org/
+https://open-wc.org/, 
 https://vaadin.com/components/
 
 ## Quickstart
@@ -49,7 +49,11 @@ For example, http://localhost:8001/#logging
 This application actively communicates with the **Loyalty Server** over AJAX requests.
 You can change back-end API path in variable ```GLOBAL_PARAMS.getCustomerUrlPost``` of the file:
 
-```web-pos-emulator/src/components/wpe-customer/config.js```
+```./src/components/wpe-customer/config.js```
+
+Please read API methods specification files in the following directory:
+
+```./docs/```
 
 
 ## Scripts to develop
