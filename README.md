@@ -1,6 +1,6 @@
 # Rosin Loyalty - web POS emulator
 
-This project is a web application which emulates the work of the POS terminal (**for the purposes of the Solana hackathon**).
+This project is a web application that simulates the operation of a POS terminal. (**for the purposes of the Solana hackathon**).
 
 The POS emulator allows the "cashier" to do the following:
 - to select products from the catalog and add them to the cart (Figure 1)
